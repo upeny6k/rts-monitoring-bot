@@ -40,7 +40,7 @@ Railway project dashboard me **Variables** tab me jayein aur yeh keys add karein
 | `TELEGRAM_BOT_TOKEN` | `<YOUR_TELEGRAM_BOT_TOKEN>` |
 | `TELEGRAM_GROUP_ID` | `<YOUR_TELEGRAM_GROUP_ID>` |
 | `OPENROUTER_API_KEY` | `<YOUR_OPENROUTER_API_KEY>` |
-| `OPENROUTER_MODEL` | `openai/gpt-5.6-luna` |
+| `OPENROUTER_MODEL` | `google/gemini-3.7-flash` |
 | `IT20_USERNAME` | `10250806` |
 | `IT20_PASSWORD` | `<YOUR_PORTAL_PASSWORD>` |
 | `IT20_BASE_URL` | `https://app.indiapost.gov.in/employeeportal/home` |

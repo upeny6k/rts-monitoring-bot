@@ -17,7 +17,7 @@ TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "").strip()
 
 # OpenRouter Settings
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "openai/gpt-5.6-luna").strip()
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.7-flash").strip()
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # India Post IT 2.0 Portal Settings

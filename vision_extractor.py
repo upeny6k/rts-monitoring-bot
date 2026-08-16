@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Vision Extractor using OpenRouter API (GPT-5.6 Luna / Multimodal AI)."""
+"""Vision Extractor using OpenRouter API (Gemini 3.7 Flash / Multimodal AI)."""
 
 import base64
 import json
