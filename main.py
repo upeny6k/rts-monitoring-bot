@@ -309,24 +309,30 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    """Start Telegram Bot application."""
+    """Start Telegram Bot application with automatic reconnect on network/conflict issues."""
+    import time
     if not config.TELEGRAM_BOT_TOKEN:
         print("ERROR: TELEGRAM_BOT_TOKEN is not set in .env")
         return
 
     print("Starting RTS Telegram Bot (Mobile OTP Mode)...")
-    app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
+    while True:
+        try:
+            app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
 
-    # Register Handlers
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("status", cmd_status))
-    app.add_handler(CommandHandler("cancel", cmd_cancel))
-    
-    app.add_handler(MessageHandler(filters.PHOTO | (filters.Document.IMAGE), handle_photo_or_doc))
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text_messages))
+            # Register Handlers
+            app.add_handler(CommandHandler("start", cmd_start))
+            app.add_handler(CommandHandler("status", cmd_status))
+            app.add_handler(CommandHandler("cancel", cmd_cancel))
+            
+            app.add_handler(MessageHandler(filters.PHOTO | (filters.Document.IMAGE), handle_photo_or_doc))
+            app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text_messages))
 
-    print("Bot is polling and ready for commands!")
-    app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+            print("Bot is polling and ready for commands!")
+            app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
+        except Exception as e:
+            logger.error(f"Bot polling encountered error: {e}. Retrying cleanly in 15 seconds...")
+            time.sleep(15)
 
 
 if __name__ == "__main__":
