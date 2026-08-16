@@ -1,0 +1,38 @@
+RTS IT 2.0 full trail — 01.08.2026 (re-trail)
+Col C rule: SO where article was TO BE DELIVERED
+  = Booking Destination (fallback: Item received at Destination office)
+Copy (auto-filled): RTS 01.08.2026 - Copy.xlsx
+Original (manual):  RTS 01.08.2026.xlsx
+Note: original may use a different office concept; compare is reference only.
+Finished: 10.08.2026 00:11:18
+
+Total rows tracked:     51
+Original reference:     51
+Exact Col C match:      33
+Soft Col C match:       0
+Correct (exact+soft):   33
+Mismatch:               18
+Auto blank (no SO):     0
+Track failed:           0
+Accuracy vs original:   64.7%
+Accuracy exact only:    64.7%
+
+--- mismatches / failures ---
+SL 2 EU892446796IN | manual='COD SO' auto='Agra HO' | mismatch 
+SL 3 UC549391963IN | manual='COD SO' auto='Agra HO' | mismatch 
+SL 16 EU769223545IN | manual='Fatehpur Sikri' auto='03/08/2026' | mismatch 
+SL 17 EU769245404IN | manual='Fatehpur Sikri' auto='03/08/2026' | mismatch 
+SL 18 EU769244973IN | manual='Fatehpur Sikri' auto='03/08/2026' | mismatch 
+SL 19 EU769245126IN | manual='Fatehpur Sikri' auto='03/08/2026' | mismatch 
+SL 29 JF581220277IN | manual='Tundla SO' auto='Firozabad HO' | mismatch 
+SL 30 JJ776555596IN | manual='Fatehpur Sikri' auto='Achhnera SO' | mismatch 
+SL 32 ED367672443IN | manual='SHAHGANJ SO' auto='SIKANDRA SO' | mismatch 
+SL 40 JJ755306386IN | manual='Bhadrauli SO' auto='Bah SO' | mismatch 
+SL 41 JL443415791IN | manual='PARHAM SO' auto='Karhal SO' | mismatch 
+SL 42 LI863587006IN | manual='YAMUNA BRIDGE SO' auto='04/08/2026' | mismatch 
+SL 44 LI952537770IN | manual='YAMUNA BRIDGE SO' auto='05/08/2026' | mismatch 
+SL 45 LI311819871IN | manual='YAMUNA BRIDGE SO' auto='Agra HO' | mismatch 
+SL 46 LI305703168IN | manual='YAMUNA BRIDGE SO' auto='Agra HO' | mismatch 
+SL 49 JL161400217IN | manual='YAMUNA BRIDGE SO' auto='03/08/2026' | mismatch 
+SL 50 EU007977467IN | manual='Fatehabad' auto='03/08/2026' | mismatch 
+SL 51 EU007977630IN | manual='Fatehabad' auto='03/08/2026' | mismatch 

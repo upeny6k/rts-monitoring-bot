@@ -1,0 +1,528 @@
+{
+  "total_tracked_rows": 51,
+  "original_rows": 51,
+  "exact_match": 33,
+  "soft_match": 0,
+  "correct_total": 33,
+  "mismatch": 18,
+  "auto_blank": 0,
+  "track_failed": 0,
+  "not_in_original": 0,
+  "accuracy_pct_vs_original": 64.7,
+  "accuracy_exact_pct": 64.7,
+  "copy_excel": "D:\\Test Folder\\RTS Monitoring project\\RTS 01.08.2026 - Copy.xlsx",
+  "original_excel": "D:\\Test Folder\\RTS Monitoring project\\RTS 01.08.2026.xlsx",
+  "finished_at": "10.08.2026 00:11:18",
+  "details": [
+    {
+      "sl": 1,
+      "article": "JO567721935IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "YAMUNA BRIDGE SO",
+      "it20_remark": "[For enquiry]",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 2,
+      "article": "EU892446796IN",
+      "manual_office": "COD SO",
+      "auto_office": "Agra HO",
+      "it20_remark": "[For enquiry]",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 3,
+      "article": "UC549391963IN",
+      "manual_office": "COD SO",
+      "auto_office": "Agra HO",
+      "it20_remark": "[For enquiry]",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 4,
+      "article": "JJ718626219IN",
+      "manual_office": "Agra HO",
+      "auto_office": "Agra HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 5,
+      "article": "JJ756361287IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "YAMUNA BRIDGE SO",
+      "it20_remark": "[For enquiry]",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 6,
+      "article": "JJ718906562IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "YAMUNA BRIDGE SO",
+      "it20_remark": "[For enquiry]",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 7,
+      "article": "JL607616601IN",
+      "manual_office": "Agra HO",
+      "auto_office": "Agra HO",
+      "it20_remark": "Addressee Left without instructions",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 8,
+      "article": "EU017349546IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 9,
+      "article": "EU282675413IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 10,
+      "article": "EU282675308IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 11,
+      "article": "EU282675550IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 12,
+      "article": "EU769258805IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 13,
+      "article": "EU769258694IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 14,
+      "article": "EU769226802IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 15,
+      "article": "EU282675400IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 16,
+      "article": "EU769223545IN",
+      "manual_office": "Fatehpur Sikri",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 17,
+      "article": "EU769245404IN",
+      "manual_office": "Fatehpur Sikri",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 18,
+      "article": "EU769244973IN",
+      "manual_office": "Fatehpur Sikri",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 19,
+      "article": "EU769245126IN",
+      "manual_office": "Fatehpur Sikri",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 20,
+      "article": "EU769244810IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 21,
+      "article": "EU769244704IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 22,
+      "article": "EU769226904IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 23,
+      "article": "EU769244783IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 24,
+      "article": "EU476281681IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 25,
+      "article": "EU769244837IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 26,
+      "article": "EU769257950IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 27,
+      "article": "EU769258734IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 28,
+      "article": "EU769226855IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Tundla SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 29,
+      "article": "JF581220277IN",
+      "manual_office": "Tundla SO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 30,
+      "article": "JJ776555596IN",
+      "manual_office": "Fatehpur Sikri",
+      "auto_office": "Achhnera SO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 31,
+      "article": "DM114319579IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "YAMUNA BRIDGE SO",
+      "it20_remark": "[For enquiry]",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 32,
+      "article": "ED367672443IN",
+      "manual_office": "SHAHGANJ SO",
+      "auto_office": "SIKANDRA SO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 33,
+      "article": "EU282675444IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 34,
+      "article": "EU930383201IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 35,
+      "article": "EU635523256IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 36,
+      "article": "EU930383246IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 37,
+      "article": "EU930383855IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 38,
+      "article": "EU930383728IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 39,
+      "article": "EU282675339IN",
+      "manual_office": "Firozabad HO",
+      "auto_office": "Firozabad HO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 40,
+      "article": "JJ755306386IN",
+      "manual_office": "Bhadrauli SO",
+      "auto_office": "Bah SO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 41,
+      "article": "JL443415791IN",
+      "manual_office": "PARHAM SO",
+      "auto_office": "Karhal SO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 42,
+      "article": "LI863587006IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "04/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 43,
+      "article": "JI812630969IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "YAMUNA BRIDGE SO",
+      "it20_remark": "Insufficient Address",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 44,
+      "article": "LI952537770IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "05/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 45,
+      "article": "LI311819871IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "Agra HO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 46,
+      "article": "LI305703168IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "Agra HO",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 47,
+      "article": "LI314924485IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "YAMUNA BRIDGE SO",
+      "it20_remark": "–",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 48,
+      "article": "LI313503265IN",
+      "manual_office": "Hathras SO",
+      "auto_office": "Hathras SO",
+      "it20_remark": "[For enquiry]",
+      "match": "exact",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 49,
+      "article": "JL161400217IN",
+      "manual_office": "YAMUNA BRIDGE SO",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 50,
+      "article": "EU007977467IN",
+      "manual_office": "Fatehabad",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    },
+    {
+      "sl": 51,
+      "article": "EU007977630IN",
+      "manual_office": "Fatehabad",
+      "auto_office": "03/08/2026",
+      "it20_remark": "–",
+      "match": "mismatch",
+      "ok": true,
+      "error": ""
+    }
+  ]
+}

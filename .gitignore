@@ -1,0 +1,32 @@
+# Secrets
+.env
+.env.*
+!.env.example
+secrets.json
+**/credentials*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Playwright / local browser profiles
+.playwright/
+.it20_profile_tmp/
+browser_data/
+
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Media and Large test assets
+Sample Video/
+Analysed Images/
+Sample Photos/
+Yet to be analysed images/
+*.mp4

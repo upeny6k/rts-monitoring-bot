@@ -1,0 +1,9 @@
+{
+  "article": "JO472221223IN",
+  "ok": true,
+  "office_col_c": "SIKANDRA SO",
+  "it20_remark": "No such person in the address",
+  "status": "Item Returned to Sender",
+  "source": "live screenshot smoke_article_result.png + portal run 2026-08-09",
+  "parser_note": "Playwright filled/tracked successfully; DOM parser fixed for next run"
+}
