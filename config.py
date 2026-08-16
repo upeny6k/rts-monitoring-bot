@@ -13,6 +13,7 @@ load_dotenv(ENV_PATH)
 # Telegram Settings
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "").strip()
+# Supergroup IDs are -100xxxxxxxxxx. Accept both -3974060856 and -1003974060856.
 
 # OpenRouter Settings
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()

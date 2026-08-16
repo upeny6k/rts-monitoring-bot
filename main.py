@@ -213,21 +213,42 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Step 1: Vision Extraction
         all_records: List[Dict[str, Any]] = []
+        vision_errors: List[str] = []
         for idx, img_path in enumerate(session.image_paths, 1):
             try:
                 records = await extract_data_from_image(img_path)
                 all_records.extend(records)
             except Exception as e:
                 logger.error(f"Error analyzing {img_path.name}: {e}")
+                vision_errors.append(f"{img_path.name}: {e}")
 
         total_records = len(all_records)
         if total_records == 0:
+            err_tail = ""
+            if vision_errors:
+                sample = "\n".join(vision_errors[:3])
+                err_tail = f"\n\nLast error(s):\n`{sample}`"
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="❌ AI kisi bhi photo se valid parcel data extract nahi kar paya. Kripya clear photos dobara bhejein."
+                text=(
+                    "❌ AI kisi bhi photo se valid parcel data extract nahi kar paya. "
+                    "Kripya clear photos dobara bhejein."
+                    f"{err_tail}"
+                ),
+                parse_mode="Markdown",
             )
             session.reset()
             return
+
+        if vision_errors:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"⚠️ {len(vision_errors)} photo(s) fail hui, baaki se data aa gaya.\n"
+                    f"`{vision_errors[0][:400]}`"
+                ),
+                parse_mode="Markdown",
+            )
 
         await context.bot.send_message(
             chat_id=chat_id,
@@ -265,12 +286,29 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-        # Run IT 2.0 Tracking
-        updated_records = await run_it20_tracking(
-            articles_data=all_records,
-            otp_callback=otp_request_callback,
-            status_callback=status_update_callback
-        )
+        # Run IT 2.0 Tracking. If browser/login fails, still send Excel with extracted rows.
+        tracking_ok = True
+        tracking_error = ""
+        updated_records = all_records
+        try:
+            updated_records = await run_it20_tracking(
+                articles_data=all_records,
+                otp_callback=otp_request_callback,
+                status_callback=status_update_callback
+            )
+        except Exception as track_err:
+            tracking_ok = False
+            tracking_error = str(track_err)
+            logger.exception("IT 2.0 tracking failed; sending extracted Excel only")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "⚠️ **IT 2.0 tracking fail ho gayi.** Extracted data se Excel bhej raha hoon "
+                    "(Office / IT 2.0 remark columns dash rahenge).\n\n"
+                    f"`{tracking_error[:600]}`"
+                ),
+                parse_mode="Markdown",
+            )
 
         # Step 3: Excel Report Build
         output_excel_name = f"RTS_{today_str}_Extracted.xlsx"
@@ -280,9 +318,14 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 4: Upload Excel to Telegram Group
         await context.bot.send_message(
             chat_id=chat_id,
-            text="📊 **Step 3 Complete:** Final Excel Report generate ho gayi hai! Group me upload ki ja rahi hai..."
+            text="📊 **Step 3 Complete:** Excel Report generate ho gayi hai! Group me upload ki ja rahi hai..."
         )
 
+        status_line = (
+            "✅ **Destination SO & Remarks:** Updated via IT 2.0"
+            if tracking_ok
+            else "⚠️ **IT 2.0 tracking incomplete** — Office / portal remark columns pending"
+        )
         with open(output_excel_path, "rb") as doc_file:
             await context.bot.send_document(
                 chat_id=chat_id,
@@ -291,8 +334,9 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 caption=(
                     f"📄 **Postal RTS Monitoring Report — {today_str}**\n\n"
                     f"📦 **Total Parcels Processed:** {len(updated_records)}\n"
-                    f"✅ **Destination SO & Remarks:** Updated via IT 2.0\n"
-                    f"🤖 **Status:** All tasks completed successfully!"
+                    f"{status_line}\n"
+                    f"🤖 **Status:** Extraction complete"
+                    + ("" if tracking_ok else " (tracking retry later)")
                 ),
                 parse_mode="Markdown"
             )
@@ -331,8 +375,16 @@ def main():
             print("Bot is polling and ready for commands!")
             app.run_polling(drop_pending_updates=True, allowed_updates=Update.ALL_TYPES)
         except Exception as e:
-            logger.error(f"Bot polling encountered error: {e}. Retrying cleanly in 15 seconds...")
-            time.sleep(15)
+            err = str(e)
+            # Conflict = another process is already polling this token.
+            # Wait longer so we do not start a second overlapping poller.
+            delay = 45 if "Conflict" in err else 15
+            logger.error(
+                "Bot polling encountered error: %s. Retrying cleanly in %s seconds...",
+                e,
+                delay,
+            )
+            time.sleep(delay)
 
 
 if __name__ == "__main__":

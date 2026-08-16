@@ -120,15 +120,34 @@ async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
             }
         ],
         "temperature": 0.1,
-        "max_tokens": 1500
+        "max_tokens": 2500,
     }
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(config.OPENROUTER_BASE_URL, headers=headers, json=payload)
-        response.raise_for_status()
+        if response.status_code >= 400:
+            body = (response.text or "")[:800]
+            raise RuntimeError(
+                f"OpenRouter HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
+            )
         result_json = response.json()
 
-    raw_text = result_json["choices"][0]["message"]["content"]
+    choices = result_json.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"OpenRouter returned no choices: {str(result_json)[:500]}")
+
+    message = choices[0].get("message") or {}
+    raw_text = message.get("content")
+    if isinstance(raw_text, list):
+        raw_text = "".join(
+            part.get("text", "") if isinstance(part, dict) else str(part)
+            for part in raw_text
+        )
+    if not raw_text or not str(raw_text).strip():
+        raise RuntimeError(
+            f"OpenRouter returned empty content (finish={choices[0].get('finish_reason')}): {str(result_json)[:500]}"
+        )
+    raw_text = str(raw_text)
     
     # Clean code fences if returned
     clean_text = raw_text.strip()
