@@ -1,16 +1,77 @@
 # -*- coding: utf-8 -*-
-"""Playwright Async Automation for India Post IT 2.0 Tracking Portal (Mobile OTP Auth)."""
+"""Playwright async automation for India Post IT 2.0 tracking (OTP / TOTP auth)."""
 
 import asyncio
 import logging
 import re
 from typing import Any, Callable, Coroutine, Dict, List, Optional
+
+import httpx
 from playwright.async_api import async_playwright, Page, Browser, BrowserContext
 
 import config
 
 logger = logging.getLogger("IT20Tracker")
 SPECIAL_OFFICES = ["AGRA HO", "FATEHABAD HO", "SANJAY PLACE", "SANJAY PLACE SO"]
+
+OtpCallback = Callable[..., Coroutine[Any, Any, str]]
+StatusCallback = Optional[Callable[[str], Coroutine[Any, Any, None]]]
+
+
+async def check_portal_reachability(timeout_sec: float = 15.0) -> Dict[str, Any]:
+    """HTTP preflight to India Post employee portal (no browser)."""
+    url = config.IT20_BASE_URL
+    result: Dict[str, Any] = {"ok": False, "url": url, "status": None, "error": "", "ms": 0}
+    started = asyncio.get_event_loop().time()
+    try:
+        async with httpx.AsyncClient(
+            timeout=timeout_sec,
+            follow_redirects=True,
+            verify=False,
+            headers={"User-Agent": config.CHROME_UA},
+        ) as client:
+            resp = await client.get(url)
+            result["status"] = resp.status_code
+            result["ok"] = resp.status_code < 500
+            result["final_url"] = str(resp.url)
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
+        logger.warning("IT 2.0 portal preflight failed: %s", result["error"])
+    result["ms"] = int((asyncio.get_event_loop().time() - started) * 1000)
+    logger.info(
+        "IT 2.0 portal preflight ok=%s status=%s %sms error=%s",
+        result["ok"],
+        result["status"],
+        result["ms"],
+        result["error"] or "-",
+    )
+    return result
+
+
+async def goto_with_retry(page: Page, url: str, attempts: Optional[int] = None) -> None:
+    """Navigate with short timeouts and retries. US/EU datacenters often stall on this host."""
+    attempts = attempts or config.IT20_NAV_RETRIES
+    timeout_ms = config.IT20_NAV_TIMEOUT_MS
+    last_err: Optional[Exception] = None
+    for i in range(1, attempts + 1):
+        try:
+            await page.goto(url, wait_until="commit", timeout=timeout_ms)
+            return
+        except Exception as exc:
+            last_err = exc
+            logger.warning("goto attempt %s/%s failed for %s: %s", i, attempts, url, exc)
+            await asyncio.sleep(1.2 * i)
+    raise RuntimeError(
+        f"India Post portal open nahi ho paya ({url}). "
+        f"{attempts} attempts, {timeout_ms}ms each. Last error: {last_err}"
+    )
+
+
+async def _call_otp(otp_callback: OtpCallback, prompt: str) -> str:
+    try:
+        return await otp_callback(prompt)
+    except TypeError:
+        return await otp_callback()
 
 
 def clean_text(text: Optional[str]) -> str:
@@ -95,21 +156,20 @@ async def wait_loading_gone(page: Page, timeout_ms: int = 30000) -> None:
 
 async def perform_login(
     page: Page,
-    otp_callback: Callable[[], Coroutine[Any, Any, str]],
-    status_callback: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None
+    otp_callback: OtpCallback,
+    status_callback: StatusCallback = None
 ) -> None:
-    """Execute Step 1 (Credentials) -> Step 2 (Select Mobile OTP) -> Step 3 (Enter Mobile OTP) -> Home Login flow."""
+    """Credentials → Mobile OTP or TOTP → Verify & Login → home."""
     if status_callback:
         await status_callback("🌐 Opening India Post Login Portal...")
 
-    await page.goto(config.IT20_BASE_URL, wait_until="domcontentloaded", timeout=60000)
+    await goto_with_retry(page, config.IT20_BASE_URL)
     await asyncio.sleep(2)
+    await wait_loading_gone(page)
 
-    # Step 1: Username & Password
     if status_callback:
         await status_callback("🔑 Entering Employee ID and Password...")
 
-    # Wait for Employee ID field
     user_input = page.locator('input#username, input[name="username"], input[placeholder*="Employee" i]').first
     await user_input.wait_for(state="visible", timeout=30000)
     await user_input.fill(config.IT20_USERNAME)
@@ -117,49 +177,75 @@ async def perform_login(
     pass_input = page.locator('input#password, input[name="password"]').first
     await pass_input.fill(config.IT20_PASSWORD)
 
-    # Click Sign In
     sign_in_btn = page.locator('button:has-text("Sign In"), input#kc-login, button[type="submit"], input[type="submit"]').first
     await sign_in_btn.click()
     await asyncio.sleep(2)
+    await wait_loading_gone(page)
 
-    # Step 2: Select "Mobile OTP" on Authentication Method Screen
-    if status_callback:
-        await status_callback("📲 Selecting 'Mobile OTP' authentication method...")
-
+    body_text = ""
     try:
-        # Look for Mobile OTP radio button or text container
-        mobile_otp_radio = page.locator('text=Mobile OTP, input[value*="mobile" i], input[value*="sms" i], label:has-text("Mobile OTP")').first
-        if await mobile_otp_radio.count() > 0 and await mobile_otp_radio.is_visible():
-            await mobile_otp_radio.click(force=True)
-            await asyncio.sleep(0.8)
-        else:
-            # Click by text
-            mobile_label = page.get_by_text("Mobile OTP", exact=False).first
-            if await mobile_label.count() > 0 and await mobile_label.is_visible():
-                await mobile_label.click(force=True)
+        body_text = (await page.inner_text("body")).lower()
+    except Exception:
+        pass
+
+    wants_totp = any(k in body_text for k in ("totp", "authenticator", "2-factor", "two-factor"))
+    has_mobile_choice = "mobile otp" in body_text
+
+    if has_mobile_choice and not wants_totp:
+        if status_callback:
+            await status_callback("📲 Selecting 'Mobile OTP' authentication method...")
+        try:
+            mobile_otp_radio = page.locator(
+                'text=Mobile OTP, input[value*="mobile" i], input[value*="sms" i], label:has-text("Mobile OTP")'
+            ).first
+            if await mobile_otp_radio.count() > 0 and await mobile_otp_radio.is_visible():
+                await mobile_otp_radio.click(force=True)
                 await asyncio.sleep(0.8)
+            else:
+                mobile_label = page.get_by_text("Mobile OTP", exact=False).first
+                if await mobile_label.count() > 0 and await mobile_label.is_visible():
+                    await mobile_label.click(force=True)
+                    await asyncio.sleep(0.8)
 
-        # Click Continue button
-        continue_btn = page.locator('button:has-text("Continue"), input[value*="Continue" i]').first
-        if await continue_btn.count() > 0 and await continue_btn.is_visible():
-            await continue_btn.click()
-            await asyncio.sleep(1.5)
-    except Exception as e:
-        logger.warning(f"Auth selection note: {e}")
+            continue_btn = page.locator('button:has-text("Continue"), input[value*="Continue" i]').first
+            if await continue_btn.count() > 0 and await continue_btn.is_visible():
+                await continue_btn.click()
+                await asyncio.sleep(1.5)
+                await wait_loading_gone(page)
+        except Exception as e:
+            logger.warning(f"Auth selection note: {e}")
+        try:
+            body_text = (await page.inner_text("body")).lower()
+        except Exception:
+            pass
+        wants_totp = any(k in body_text for k in ("totp", "authenticator", "2-factor", "two-factor"))
 
-    # Step 3: Enter Mobile OTP Code
+    if wants_totp:
+        otp_prompt = (
+            "🔐 **IT 2.0 Login: APT TOTP Code Required!**\n\n"
+            "APT TOTP app se **6-digit code** turant yahan reply karein.\n"
+            "*(Window ~30 seconds — jaldi bhejein)*"
+        )
+        status_msg = "🔐 TOTP screen. APT app se 6-digit code chahiye..."
+    else:
+        otp_prompt = (
+            "📱 **IT 2.0 Login: Mobile OTP Code Required!**\n\n"
+            "Registered mobile number par aaya hua **6-digit OTP code** yahan reply karein.\n"
+            f"*(Bot {config.IT20_OTP_TIMEOUT_SEC} second tak wait kar raha hai...)*"
+        )
+        status_msg = "📱 OTP screen. 6-digit Mobile OTP chahiye..."
+
     if status_callback:
-        await status_callback("📱 Reached OTP Screen. Requesting 6-digit Mobile OTP from user...")
+        await status_callback(status_msg)
 
-    # Call user callback to get Mobile OTP from Telegram (waits up to 3 mins)
-    otp_code = await otp_callback()
+    otp_code = await _call_otp(otp_callback, otp_prompt)
     clean_otp = re.sub(r"\D", "", otp_code).strip()[:6]
 
     if len(clean_otp) != 6:
         raise ValueError(f"Invalid OTP code received: {otp_code}")
 
     if status_callback:
-        await status_callback(f"⚡ Fast Injecting Mobile OTP ({clean_otp[:2]}****) into portal...")
+        await status_callback(f"⚡ Fast Injecting OTP ({clean_otp[:2]}****) into portal...")
 
     # Fill 6 digit boxes or single field instantly
     digit_boxes = page.locator('input[maxlength="1"]:visible')
@@ -261,10 +347,22 @@ async def track_article(page: Page, article_no: str) -> Dict[str, str]:
 
 async def run_it20_tracking(
     articles_data: List[Dict[str, Any]],
-    otp_callback: Callable[[], Coroutine[Any, Any, str]],
-    status_callback: Optional[Callable[[str], Coroutine[Any, Any, None]]] = None
+    otp_callback: OtpCallback,
+    status_callback: StatusCallback = None
 ) -> List[Dict[str, Any]]:
-    """Complete tracking pipeline: Launch browser -> Login via Mobile OTP -> Track each article -> Return updated data."""
+    """Complete tracking pipeline: Launch browser -> Login via OTP/TOTP -> Track each article -> Return updated data."""
+    if status_callback:
+        await status_callback("🛰️ India Post portal connectivity check ho rahi hai...")
+
+    preflight = await check_portal_reachability()
+    if not preflight["ok"]:
+        err = preflight.get("error") or f"HTTP {preflight.get('status')}"
+        raise RuntimeError(
+            "India Post employee portal Railway server se open nahi ho raha "
+            f"({preflight.get('url')}, {preflight.get('ms')}ms). {err}\n"
+            "Server ko Asia (Singapore) region pe hona chahiye — US East se portal timeout hota hai."
+        )
+
     async with async_playwright() as pw:
         browser: Browser = await pw.chromium.launch(
             headless=True,
@@ -273,25 +371,29 @@ async def run_it20_tracking(
                 "--disable-setuid-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-blink-features=AutomationControlled",
-            ]
+                "--disable-gpu",
+            ],
         )
         context: BrowserContext = await browser.new_context(
             viewport={"width": 1400, "height": 900},
             locale="en-IN",
-            ignore_https_errors=True
+            timezone_id="Asia/Kolkata",
+            user_agent=config.CHROME_UA,
+            ignore_https_errors=True,
+        )
+        await context.add_init_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
         )
         page: Page = await context.new_page()
         page.set_default_timeout(30000)
 
         try:
-            # Login via Mobile OTP
             await perform_login(page, otp_callback, status_callback)
 
-            # Navigate to Article Tracking
             if status_callback:
                 await status_callback("🔍 Navigating to Article Tracking Page...")
 
-            await page.goto(config.IT20_TRACK_URL, wait_until="domcontentloaded", timeout=60000)
+            await goto_with_retry(page, config.IT20_TRACK_URL)
             await wait_loading_gone(page)
             await asyncio.sleep(1)
 

@@ -4,6 +4,7 @@
 import asyncio
 from datetime import datetime
 import logging
+import os
 from pathlib import Path
 import re
 import shutil
@@ -20,7 +21,7 @@ from telegram.ext import (
 
 import config
 from excel_generator import build_rts_excel
-from tracker import run_it20_tracking
+from tracker import check_portal_reachability, run_it20_tracking
 from vision_extractor import extract_data_from_image
 
 # Configure logging
@@ -83,6 +84,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "4. Bot AI extraction aur IT 2.0 tracking karke final Excel report bhej dega!\n\n"
         "Commands:\n"
         "• `/status` - Current status check\n"
+        "• `/portalcheck` - India Post portal server se reachable hai ya nahi\n"
         "• `/cancel` - Active session cancel karein",
         parse_mode="Markdown"
     )
@@ -98,6 +100,28 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         st = "⚪ Idle (waiting for `start today work` message)."
 
     await update.message.reply_text(f"📊 **Bot Status:**\n{st}", parse_mode="Markdown")
+
+
+async def cmd_portalcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ping India Post employee portal from this Railway replica."""
+    await update.message.reply_text("🛰️ India Post portal check chal raha hai...")
+    result = await check_portal_reachability()
+    region = os.getenv("RAILWAY_REPLICA_REGION") or os.getenv("RAILWAY_REGION") or "unknown"
+    if result["ok"]:
+        text = (
+            "✅ **Portal reachable** from this server.\n"
+            f"HTTP `{result.get('status')}` in `{result.get('ms')}ms`\n"
+            f"Region: `{region}`"
+        )
+    else:
+        text = (
+            "❌ **Portal NOT reachable** from this server — yahi wajah se online tracking fail ho rahi thi.\n"
+            f"Error: `{result.get('error') or result.get('status')}`\n"
+            f"Time: `{result.get('ms')}ms`\n"
+            f"Region: `{region}`\n"
+            "Server ko Singapore (asia-southeast1) pe hona chahiye, US East se India Post timeout hota hai."
+        )
+    await update.message.reply_text(text, parse_mode="Markdown")
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -253,21 +277,22 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"✅ **Step 1 Complete:** Total **{total_records}** parcel records extract ho gaye!\n\n"
-                 f"🌐 **Step 2:** India Post IT 2.0 portal par login (Mobile OTP) & tracking start ho rahi hai...",
+                 f"🌐 **Step 2:** India Post IT 2.0 portal par login & tracking start ho rahi hai...",
             parse_mode="Markdown"
         )
 
         # Step 2: IT 2.0 Browser Tracking with Mobile OTP Callback
-        async def otp_request_callback() -> str:
-            """Prompt Telegram group for Mobile OTP and wait for response."""
+        async def otp_request_callback(prompt: str = "") -> str:
+            """Prompt Telegram group for TOTP / Mobile OTP and wait for response."""
             loop = asyncio.get_running_loop()
             session.otp_future = loop.create_future()
-            
+
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="📱 **IT 2.0 Login: Mobile OTP Code Required!**\n\n"
-                     "Registered mobile number par aaya hua **6-digit OTP code** yahan reply karein.\n"
-                     "*(Bot 3 minute tak wait kar raha hai...)*",
+                text=prompt or (
+                    "📱 **IT 2.0 Login: 6-digit OTP/TOTP Required!**\n\n"
+                    "APT TOTP app ya registered mobile OTP yahan reply karein."
+                ),
                 parse_mode="Markdown"
             )
 
@@ -303,9 +328,12 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=(
-                    "⚠️ **IT 2.0 tracking fail ho gayi.** Extracted data se Excel bhej raha hoon "
+                    "⚠️ **IT 2.0 online tracking fail ho gayi.** "
+                    "Extracted data se Excel bhej raha hoon "
                     "(Office / IT 2.0 remark columns dash rahenge).\n\n"
-                    f"`{tracking_error[:600]}`"
+                    f"`{tracking_error[:700]}`\n\n"
+                    "Check: `/portalcheck` — agar portal unreachable hai to Railway region "
+                    "Singapore hona chahiye."
                 ),
                 parse_mode="Markdown",
             )
@@ -359,7 +387,9 @@ def main():
         print("ERROR: TELEGRAM_BOT_TOKEN is not set in .env")
         return
 
-    print("Starting RTS Telegram Bot (Mobile OTP Mode)...")
+    print("Starting RTS Telegram Bot (IT 2.0 tracking + OTP/TOTP)...")
+    region = os.getenv("RAILWAY_REPLICA_REGION") or os.getenv("RAILWAY_REGION") or "local"
+    print(f"Runtime region: {region}")
     while True:
         try:
             app = ApplicationBuilder().token(config.TELEGRAM_BOT_TOKEN).build()
@@ -368,6 +398,7 @@ def main():
             app.add_handler(CommandHandler("start", cmd_start))
             app.add_handler(CommandHandler("status", cmd_status))
             app.add_handler(CommandHandler("cancel", cmd_cancel))
+            app.add_handler(CommandHandler("portalcheck", cmd_portalcheck))
             
             app.add_handler(MessageHandler(filters.PHOTO | (filters.Document.IMAGE), handle_photo_or_doc))
             app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text_messages))

@@ -32,6 +32,13 @@ IT20_TRACK_URL = os.getenv(
     "https://app.indiapost.gov.in/tracking/track/article"
 ).strip()
 IT20_OTP_TIMEOUT_SEC = int(os.getenv("IT20_OTP_TIMEOUT_SEC", "180"))
+IT20_NAV_TIMEOUT_MS = int(os.getenv("IT20_NAV_TIMEOUT_MS", "25000"))
+IT20_NAV_RETRIES = int(os.getenv("IT20_NAV_RETRIES", "3"))
+CHROME_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/122.0.0.0 Safari/537.36"
+)
 
 # Directories
 DOWNLOADS_DIR = BASE_DIR / "temp_downloads"

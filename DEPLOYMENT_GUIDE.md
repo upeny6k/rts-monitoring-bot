@@ -28,6 +28,8 @@ git push -u origin main
 2. **`+ New Project`** button par click karein.
 3. **`Deploy from GitHub repo`** select karein aur apni repo (`rts-monitoring-bot`) choose karein.
 4. Railway automatically **Dockerfile** detect karke build start kar dega.
+5. Service **Region** ko **Southeast Asia (Singapore)** `asia-southeast1-eqsg3a` par set karein.
+   India Post employee portal (`app.indiapost.gov.in`) **US East** se timeout hota hai — isi wajah se tracking fail ho rahi thi.
 
 ---
 
