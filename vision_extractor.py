@@ -1,14 +1,25 @@
 # -*- coding: utf-8 -*-
 """Vision Extractor using OpenRouter API (Gemini 3.7 Flash / Multimodal AI)."""
 
+import asyncio
 import base64
 import json
 import re
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 import httpx
+from PIL import Image
 
 import config
+
+RETRYABLE_HTTP = {408, 429, 500, 502, 503, 520, 522, 524}
+MAX_IMAGE_SIDE = 1600
+
+
+class OpenRouterQuotaError(RuntimeError):
+    """API key credit/spend cap exhausted — remaining photos will also fail."""
 
 SYSTEM_PROMPT = """You are an expert postal data extraction AI specialized in Indian Postal Return-to-Sender (RTS) parcels and envelopes.
 
@@ -72,14 +83,69 @@ def normalize_article_no(raw: str) -> str:
 
 
 def image_to_base64_data_uri(image_path: Path) -> str:
-    """Read image file and convert to base64 data URI."""
-    suffix = image_path.suffix.lower().lstrip(".")
-    if suffix == "jpg":
-        suffix = "jpeg"
-    mime_type = f"image/{suffix}" if suffix in ("jpeg", "png", "webp") else "image/jpeg"
-    with open(image_path, "rb") as f:
-        encoded = base64.b64encode(f.read()).decode("utf-8")
-    return f"data:{mime_type};base64,{encoded}"
+    """Read image, shrink for vision cost/speed, convert to JPEG data URI."""
+    try:
+        with Image.open(image_path) as im:
+            im = im.convert("RGB")
+            w, h = im.size
+            longest = max(w, h)
+            if longest > MAX_IMAGE_SIDE:
+                scale = MAX_IMAGE_SIDE / longest
+                im = im.resize(
+                    (max(1, int(w * scale)), max(1, int(h * scale))),
+                    Image.Resampling.LANCZOS,
+                )
+            buf = BytesIO()
+            im.save(buf, format="JPEG", quality=80, optimize=True)
+            encoded = base64.b64encode(buf.getvalue()).decode("utf-8")
+        return f"data:image/jpeg;base64,{encoded}"
+    except Exception:
+        suffix = image_path.suffix.lower().lstrip(".")
+        if suffix == "jpg":
+            suffix = "jpeg"
+        mime_type = f"image/{suffix}" if suffix in ("jpeg", "png", "webp") else "image/jpeg"
+        with open(image_path, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+        return f"data:{mime_type};base64,{encoded}"
+
+
+def _is_quota_error(status_code: int, body: str) -> bool:
+    text = (body or "").lower()
+    if status_code == 402:
+        return True
+    if status_code == 403 and any(
+        token in text
+        for token in ("limit exceeded", "credit", "quota", "insufficient")
+    ):
+        return True
+    return False
+
+
+async def check_openrouter_quota() -> Dict[str, Any]:
+    """Return key spend cap info. remaining=None means unlimited."""
+    info: Dict[str, Any] = {"ok": True, "limit": None, "remaining": None, "error": ""}
+    if not config.OPENROUTER_API_KEY:
+        info["ok"] = False
+        info["error"] = "OPENROUTER_API_KEY is not set"
+        return info
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                "https://openrouter.ai/api/v1/key",
+                headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
+            )
+            payload = resp.json() if resp.content else {}
+            data = payload.get("data") or payload
+            remaining = data.get("limit_remaining")
+            info["limit"] = data.get("limit")
+            info["remaining"] = remaining
+            if remaining is not None and float(remaining) <= 0:
+                info["ok"] = False
+                info["error"] = "OpenRouter API key credit limit exhausted"
+    except Exception as exc:
+        info["ok"] = False
+        info["error"] = f"{type(exc).__name__}: {exc}"
+    return info
 
 
 def _strip_code_fences(raw_text: str) -> str:
@@ -197,17 +263,32 @@ async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
         ],
         "temperature": 0.1,
         # 2500 was truncating longer Hindi addresses mid-JSON (mobile/address cut off).
-        "max_tokens": 8192,
+        "max_tokens": 4096,
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(config.OPENROUTER_BASE_URL, headers=headers, json=payload)
+    result_json: Optional[Dict[str, Any]] = None
+    last_http_err = ""
+    for attempt in range(1, 4):
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(config.OPENROUTER_BASE_URL, headers=headers, json=payload)
+        body = (response.text or "")[:800]
+        if _is_quota_error(response.status_code, body):
+            raise OpenRouterQuotaError(
+                f"OpenRouter HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
+            )
+        if response.status_code in RETRYABLE_HTTP:
+            last_http_err = f"OpenRouter HTTP {response.status_code}: {body}"
+            await asyncio.sleep(2 * attempt)
+            continue
         if response.status_code >= 400:
-            body = (response.text or "")[:800]
             raise RuntimeError(
                 f"OpenRouter HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
             )
         result_json = response.json()
+        break
+
+    if result_json is None:
+        raise RuntimeError(last_http_err or "OpenRouter request failed after retries")
 
     choices = result_json.get("choices") or []
     if not choices:

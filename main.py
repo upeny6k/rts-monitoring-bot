@@ -25,7 +25,11 @@ from telegram.ext import (
 import config
 from excel_generator import build_rts_excel
 from tracker import check_portal_reachability, run_it20_tracking
-from vision_extractor import extract_data_from_image
+from vision_extractor import (
+    OpenRouterQuotaError,
+    check_openrouter_quota,
+    extract_data_from_image,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -289,16 +293,81 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Step 1: Vision Extraction
         all_records: List[Dict[str, Any]] = []
         vision_errors: List[str] = []
-        for img_path in session.image_paths:
+        quota_hit = False
+        photos_ok = 0
+        total_imgs = len(session.image_paths)
+
+        quota = await check_openrouter_quota()
+        if not quota.get("ok"):
+            await safe_send_message(
+                bot,
+                chat_id,
+                (
+                    "OpenRouter API key credit/limit khatam hai, isliye photos analyse nahi ho sakti.\n"
+                    f"{quota.get('error') or ''}\n"
+                    "OpenRouter key pe spend cap badhao, phir `start today work` se dobara chalao."
+                ),
+                parse_mode=None,
+            )
+            return
+
+        def failed_placeholder(img_path: Path, reason: str) -> Dict[str, Any]:
+            return {
+                "corner_serial": None,
+                "article_no": "–",
+                "name": "–",
+                "address": "–",
+                "mobile": "–",
+                "handwritten_remark": reason[:120] or "–",
+                "confidence": "low",
+                "source_image": img_path.name,
+            }
+
+        for idx, img_path in enumerate(session.image_paths, 1):
+            if idx == 1 or idx % 10 == 0 or idx == total_imgs:
+                await safe_send_message(
+                    bot,
+                    chat_id,
+                    f"🔍 Vision {idx}/{total_imgs} photos...",
+                    parse_mode=None,
+                )
             try:
                 records = await extract_data_from_image(img_path)
-                all_records.extend(records)
+                if records:
+                    all_records.extend(records)
+                    photos_ok += 1
+                else:
+                    vision_errors.append(f"{img_path.name}: empty extract")
+                    all_records.append(failed_placeholder(img_path, "AI empty extract"))
+            except OpenRouterQuotaError as e:
+                quota_hit = True
+                logger.error("OpenRouter quota hit at %s/%s: %s", idx, total_imgs, e)
+                leftover = session.image_paths[idx - 1 :]
+                for rest in leftover:
+                    vision_errors.append(f"{rest.name}: OpenRouter key limit")
+                    all_records.append(
+                        failed_placeholder(rest, "OpenRouter key limit — not analysed")
+                    )
+                await safe_send_message(
+                    bot,
+                    chat_id,
+                    (
+                        f"OpenRouter credit/limit beech me khatam ho gaya.\n"
+                        f"Analyse ho chuki: {photos_ok}/{total_imgs}\n"
+                        f"Pending: {len(leftover)} photos Excel me low-confidence rows hain.\n"
+                        "Key cap badhane ke baad yahi photos dobara bhejo."
+                    ),
+                    parse_mode=None,
+                )
+                break
             except Exception as e:
                 logger.error(f"Error analyzing {img_path.name}: {e}")
                 vision_errors.append(f"{img_path.name}: {e}")
+                all_records.append(failed_placeholder(img_path, f"Vision failed: {e}"[:120]))
 
+        extracted_ok = photos_ok
         total_records = len(all_records)
-        if total_records == 0:
+        if extracted_ok == 0:
             err_tail = ""
             if vision_errors:
                 sample = " | ".join(vision_errors[:2])[:500]
@@ -315,21 +384,26 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        if vision_errors:
+        if vision_errors and not quota_hit:
             await safe_send_message(
                 bot,
                 chat_id,
                 (
-                    f"⚠️ {len(vision_errors)} photo(s) fail hui, baaki se "
-                    f"{total_records} records aa gaye. Excel phir bhi generate ho rahi hai."
+                    f"⚠️ {len(vision_errors)} photo(s) fail hui, {extracted_ok}/{total_imgs} "
+                    "photos se data aa gaya. Excel generate ho rahi hai."
                 ),
             )
 
+        status_word = "INCOMPLETE" if (quota_hit or vision_errors) else "Complete"
         await safe_send_message(
             bot,
             chat_id,
-            f"✅ **Step 1 Complete:** Total **{total_records}** parcel records extract ho gaye!\n\n"
-            "📊 Ab Excel generate karke group me bhej raha hoon...",
+            (
+                f"Step 1 {status_word}: {extracted_ok}/{total_imgs} photos analysed "
+                f"({total_records} Excel rows).\n"
+                "Ab Excel group me bhej raha hoon..."
+            ),
+            parse_mode=None,
         )
 
         # Step 2: Excel FIRST so tracking failures cannot block the daily report.
@@ -337,6 +411,11 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         output_excel_path = config.REPORTS_DIR / output_excel_name
         build_rts_excel(all_records, output_excel_path, report_date=today_str)
 
+        caption_status = (
+            f"INCOMPLETE — {extracted_ok}/{total_imgs} photos analysed"
+            if (quota_hit or vision_errors)
+            else "Extraction complete"
+        )
         await send_excel_to_group(
             bot,
             chat_id,
@@ -344,9 +423,10 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
             output_excel_name,
             (
                 f"📄 **Postal RTS Monitoring Report — {today_str}**\n\n"
-                f"📦 **Total Parcels Processed:** {len(all_records)}\n"
+                f"📦 **Photos analysed:** {extracted_ok}/{total_imgs}\n"
+                f"📦 **Excel rows:** {len(all_records)}\n"
                 "⚠️ **IT 2.0 tracking pending** — Office / portal remark columns dash hain\n"
-                "🤖 **Status:** Extraction complete"
+                f"🤖 **Status:** {caption_status}"
             ),
         )
 
@@ -379,6 +459,15 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_send_message(bot, chat_id, msg, parse_mode=None)
             except Exception:
                 pass
+
+        if quota_hit:
+            await safe_send_message(
+                bot,
+                chat_id,
+                "IT 2.0 tracking skip — pehle saari photos ka extraction complete karo.",
+                parse_mode=None,
+            )
+            return
 
         track_timeout = max(config.IT20_OTP_TIMEOUT_SEC + 90, 240)
         try:
