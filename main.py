@@ -3,12 +3,15 @@
 
 import asyncio
 from datetime import datetime
+from zoneinfo import ZoneInfo
 import logging
 import os
 from pathlib import Path
 import re
 import shutil
 from typing import Any, Dict, List, Optional
+
+IST = ZoneInfo("Asia/Kolkata")
 
 from telegram import Update
 from telegram.ext import (
@@ -47,7 +50,7 @@ class RTSWorkSession:
         self.image_paths = []
         self.otp_future = None
         self.chat_id = chat_id
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(IST).strftime("%Y%m%d_%H%M%S")
         self.session_dir = config.DOWNLOADS_DIR / f"session_{timestamp}"
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
@@ -71,6 +74,53 @@ def is_authorized_chat(chat_id: int) -> bool:
         return chat_id == cfg_id or str(chat_id).endswith(str(abs(cfg_id)))
     except Exception:
         return str(chat_id) == str(config.TELEGRAM_GROUP_ID)
+
+
+def _plain_text(text: str) -> str:
+    return re.sub(r"[*_`\[\]]", "", text or "")[:3900]
+
+
+async def safe_send_message(
+    bot,
+    chat_id: int,
+    text: str,
+    parse_mode: Optional[str] = "Markdown",
+) -> None:
+    """Send a Telegram message; fall back to plain text if Markdown parsing fails."""
+    try:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+        return
+    except Exception as exc:
+        logger.warning("Markdown send failed (%s); retrying plain text", exc)
+    await bot.send_message(chat_id=chat_id, text=_plain_text(text))
+
+
+async def send_excel_to_group(
+    bot,
+    chat_id: int,
+    excel_path: Path,
+    filename: str,
+    caption: str,
+) -> None:
+    """Upload Excel. Caption Markdown is optional; file still goes if caption parse fails."""
+    with open(excel_path, "rb") as doc_file:
+        try:
+            await bot.send_document(
+                chat_id=chat_id,
+                document=doc_file,
+                filename=filename,
+                caption=caption,
+                parse_mode="Markdown",
+            )
+        except Exception as exc:
+            logger.warning("Excel caption Markdown failed (%s); sending file with plain caption", exc)
+            doc_file.seek(0)
+            await bot.send_document(
+                chat_id=chat_id,
+                document=doc_file,
+                filename=filename,
+                caption=_plain_text(caption),
+            )
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -230,15 +280,16 @@ async def handle_text_messages(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Execute AI Vision extraction -> Playwright tracking via Mobile OTP -> Excel upload."""
+    """Vision extract -> Excel to Telegram first -> optional IT 2.0 tracking."""
     chat_id = session.chat_id
-    today_str = datetime.now().strftime("%d.%m.%Y")
-    
+    today_str = datetime.now(IST).strftime("%d.%m.%Y")
+    bot = context.bot
+
     try:
         # Step 1: Vision Extraction
         all_records: List[Dict[str, Any]] = []
         vision_errors: List[str] = []
-        for idx, img_path in enumerate(session.image_paths, 1):
+        for img_path in session.image_paths:
             try:
                 records = await extract_data_from_image(img_path)
                 all_records.extend(records)
@@ -250,132 +301,139 @@ async def run_full_pipeline(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if total_records == 0:
             err_tail = ""
             if vision_errors:
-                sample = "\n".join(vision_errors[:3])
-                err_tail = f"\n\nLast error(s):\n`{sample}`"
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "❌ AI kisi bhi photo se valid parcel data extract nahi kar paya. "
+                sample = " | ".join(vision_errors[:2])[:500]
+                err_tail = f"\n\nLast error: {sample}"
+            await safe_send_message(
+                bot,
+                chat_id,
+                (
+                    "AI kisi bhi photo se valid parcel data extract nahi kar paya. "
                     "Kripya clear photos dobara bhejein."
                     f"{err_tail}"
                 ),
-                parse_mode="Markdown",
+                parse_mode=None,
             )
-            session.reset()
             return
 
         if vision_errors:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    f"⚠️ {len(vision_errors)} photo(s) fail hui, baaki se data aa gaya.\n"
-                    f"`{vision_errors[0][:400]}`"
+            await safe_send_message(
+                bot,
+                chat_id,
+                (
+                    f"⚠️ {len(vision_errors)} photo(s) fail hui, baaki se "
+                    f"{total_records} records aa gaye. Excel phir bhi generate ho rahi hai."
                 ),
-                parse_mode="Markdown",
             )
 
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"✅ **Step 1 Complete:** Total **{total_records}** parcel records extract ho gaye!\n\n"
-                 f"🌐 **Step 2:** India Post IT 2.0 portal par login & tracking start ho rahi hai...",
-            parse_mode="Markdown"
+        await safe_send_message(
+            bot,
+            chat_id,
+            f"✅ **Step 1 Complete:** Total **{total_records}** parcel records extract ho gaye!\n\n"
+            "📊 Ab Excel generate karke group me bhej raha hoon...",
         )
 
-        # Step 2: IT 2.0 Browser Tracking with Mobile OTP Callback
+        # Step 2: Excel FIRST so tracking failures cannot block the daily report.
+        output_excel_name = f"RTS_{today_str}_Extracted.xlsx"
+        output_excel_path = config.REPORTS_DIR / output_excel_name
+        build_rts_excel(all_records, output_excel_path, report_date=today_str)
+
+        await send_excel_to_group(
+            bot,
+            chat_id,
+            output_excel_path,
+            output_excel_name,
+            (
+                f"📄 **Postal RTS Monitoring Report — {today_str}**\n\n"
+                f"📦 **Total Parcels Processed:** {len(all_records)}\n"
+                "⚠️ **IT 2.0 tracking pending** — Office / portal remark columns dash hain\n"
+                "🤖 **Status:** Extraction complete"
+            ),
+        )
+
+        # Step 3: Optional IT 2.0 tracking. Never let this block the Excel already sent.
         async def otp_request_callback(prompt: str = "") -> str:
-            """Prompt Telegram group for TOTP / Mobile OTP and wait for response."""
             loop = asyncio.get_running_loop()
             session.otp_future = loop.create_future()
-
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=prompt or (
+            await safe_send_message(
+                bot,
+                chat_id,
+                prompt or (
                     "📱 **IT 2.0 Login: 6-digit OTP/TOTP Required!**\n\n"
                     "APT TOTP app ya registered mobile OTP yahan reply karein."
                 ),
-                parse_mode="Markdown"
             )
-
             try:
-                otp_code = await asyncio.wait_for(session.otp_future, timeout=config.IT20_OTP_TIMEOUT_SEC)
+                otp_code = await asyncio.wait_for(
+                    session.otp_future, timeout=config.IT20_OTP_TIMEOUT_SEC
+                )
                 return otp_code
             except asyncio.TimeoutError:
-                raise RuntimeError(f"OTP timeout ({config.IT20_OTP_TIMEOUT_SEC}s) - Mobile OTP receive nahi hua.")
+                raise RuntimeError(
+                    f"OTP timeout ({config.IT20_OTP_TIMEOUT_SEC}s) - Mobile OTP receive nahi hua."
+                )
             finally:
                 session.otp_future = None
 
         async def status_update_callback(msg: str):
-            """Send status updates during tracking."""
             try:
-                await context.bot.send_message(chat_id=chat_id, text=msg)
+                await safe_send_message(bot, chat_id, msg, parse_mode=None)
             except Exception:
                 pass
 
-        # Run IT 2.0 Tracking. If browser/login fails, still send Excel with extracted rows.
-        tracking_ok = True
-        tracking_error = ""
-        updated_records = all_records
+        track_timeout = max(config.IT20_OTP_TIMEOUT_SEC + 90, 240)
         try:
-            updated_records = await run_it20_tracking(
-                articles_data=all_records,
-                otp_callback=otp_request_callback,
-                status_callback=status_update_callback
+            await safe_send_message(
+                bot,
+                chat_id,
+                "🌐 **Step 3:** India Post IT 2.0 tracking try ho rahi hai "
+                "(fail ho to pehle wali Excel hi final maano)...",
+            )
+            updated_records = await asyncio.wait_for(
+                run_it20_tracking(
+                    articles_data=all_records,
+                    otp_callback=otp_request_callback,
+                    status_callback=status_update_callback,
+                ),
+                timeout=track_timeout,
+            )
+            build_rts_excel(updated_records, output_excel_path, report_date=today_str)
+            await send_excel_to_group(
+                bot,
+                chat_id,
+                output_excel_path,
+                output_excel_name,
+                (
+                    f"📄 **Postal RTS Monitoring Report — {today_str} (IT 2.0 updated)**\n\n"
+                    f"📦 **Total Parcels Processed:** {len(updated_records)}\n"
+                    "✅ **Destination SO & Remarks:** Updated via IT 2.0\n"
+                    "🤖 **Status:** Extraction + tracking complete"
+                ),
             )
         except Exception as track_err:
-            tracking_ok = False
-            tracking_error = str(track_err)
-            logger.exception("IT 2.0 tracking failed; sending extracted Excel only")
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "⚠️ **IT 2.0 online tracking fail ho gayi.** "
-                    "Extracted data se Excel bhej raha hoon "
-                    "(Office / IT 2.0 remark columns dash rahenge).\n\n"
-                    f"`{tracking_error[:700]}`\n\n"
-                    "Check: `/portalcheck` — agar portal unreachable hai to Railway region "
-                    "Singapore hona chahiye."
+            logger.exception("IT 2.0 tracking failed; extracted Excel already sent")
+            await safe_send_message(
+                bot,
+                chat_id,
+                (
+                    "⚠️ IT 2.0 online tracking fail / skip. "
+                    "Extracted Excel already group me hai "
+                    "(Office / IT 2.0 remark columns dash rahenge).\n"
+                    f"{str(track_err)[:400]}"
                 ),
-                parse_mode="Markdown",
-            )
-
-        # Step 3: Excel Report Build
-        output_excel_name = f"RTS_{today_str}_Extracted.xlsx"
-        output_excel_path = config.REPORTS_DIR / output_excel_name
-        build_rts_excel(updated_records, output_excel_path, report_date=today_str)
-
-        # Step 4: Upload Excel to Telegram Group
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="📊 **Step 3 Complete:** Excel Report generate ho gayi hai! Group me upload ki ja rahi hai..."
-        )
-
-        status_line = (
-            "✅ **Destination SO & Remarks:** Updated via IT 2.0"
-            if tracking_ok
-            else "⚠️ **IT 2.0 tracking incomplete** — Office / portal remark columns pending"
-        )
-        with open(output_excel_path, "rb") as doc_file:
-            await context.bot.send_document(
-                chat_id=chat_id,
-                document=doc_file,
-                filename=output_excel_name,
-                caption=(
-                    f"📄 **Postal RTS Monitoring Report — {today_str}**\n\n"
-                    f"📦 **Total Parcels Processed:** {len(updated_records)}\n"
-                    f"{status_line}\n"
-                    f"🤖 **Status:** Extraction complete"
-                    + ("" if tracking_ok else " (tracking retry later)")
-                ),
-                parse_mode="Markdown"
+                parse_mode=None,
             )
 
     except Exception as e:
         logger.exception("Error in pipeline execution")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"❌ **Error occurred during pipeline:**\n`{str(e)}`",
-            parse_mode="Markdown"
-        )
+        try:
+            await safe_send_message(
+                bot,
+                chat_id,
+                f"Error occurred during pipeline: {str(e)[:700]}",
+                parse_mode=None,
+            )
+        except Exception:
+            logger.exception("Failed to send pipeline error to Telegram")
     finally:
         session.reset()
 

@@ -5,7 +5,7 @@ import base64
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import httpx
 
 import config
@@ -82,6 +82,82 @@ def image_to_base64_data_uri(image_path: Path) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
+def _strip_code_fences(raw_text: str) -> str:
+    clean_text = (raw_text or "").strip()
+    if clean_text.startswith("```"):
+        clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\s*```$", "", clean_text)
+    return clean_text.strip()
+
+
+def _close_truncated_json(text: str) -> str:
+    """Best-effort close of truncated JSON arrays/objects from vision models."""
+    s = (text or "").rstrip()
+    in_str = False
+    escaped = False
+    for ch in s:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and in_str:
+            escaped = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+    if in_str:
+        s += '"'
+    s = s.rstrip()
+    if s.endswith(","):
+        s = s[:-1]
+    s += "}" * max(0, s.count("{") - s.count("}"))
+    s += "]" * max(0, s.count("[") - s.count("]"))
+    return s
+
+
+def _parse_records_json(raw_text: str) -> List[Any]:
+    """Parse vision model JSON, including truncated / fenced replies."""
+    clean_text = _strip_code_fences(raw_text)
+    attempts = [clean_text]
+    match = re.search(r"\[.*\]", clean_text, re.DOTALL)
+    if match:
+        attempts.append(match.group(0))
+    repaired = _close_truncated_json(clean_text)
+    if repaired not in attempts:
+        attempts.append(repaired)
+
+    data = None
+    last_err: Optional[Exception] = None
+    for cand in attempts:
+        try:
+            data = json.loads(cand)
+            break
+        except Exception as exc:
+            last_err = exc
+
+    if data is None:
+        objs: List[Any] = []
+        for m in re.finditer(r"\{[^{}]+\}", clean_text):
+            try:
+                obj = json.loads(m.group(0))
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                objs.append(obj)
+        if objs:
+            data = objs
+
+    if data is None:
+        raise ValueError(
+            f"Failed to parse JSON from AI response: {raw_text[:800]}"
+        ) from last_err
+
+    if isinstance(data, dict):
+        data = [data]
+    if not isinstance(data, list):
+        raise ValueError(f"AI JSON was not a list/object: {type(data)}")
+    return data
+
+
 async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
     """Send image to OpenRouter Vision API and parse extracted parcel data."""
     if not config.OPENROUTER_API_KEY:
@@ -120,7 +196,8 @@ async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
             }
         ],
         "temperature": 0.1,
-        "max_tokens": 2500,
+        # 2500 was truncating longer Hindi addresses mid-JSON (mobile/address cut off).
+        "max_tokens": 8192,
     }
 
     async with httpx.AsyncClient(timeout=120.0) as client:
@@ -148,28 +225,13 @@ async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
             f"OpenRouter returned empty content (finish={choices[0].get('finish_reason')}): {str(result_json)[:500]}"
         )
     raw_text = str(raw_text)
-    
-    # Clean code fences if returned
-    clean_text = raw_text.strip()
-    if clean_text.startswith("```"):
-        clean_text = re.sub(r"^```(?:json)?\s*", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\s*```$", "", clean_text)
-    
-    try:
-        data = json.loads(clean_text)
-        if isinstance(data, dict):
-            data = [data]
-    except Exception as e:
-        # Fallback regex extraction of JSON array
-        match = re.search(r"\[.*\]", clean_text, re.DOTALL)
-        if match:
-            data = json.loads(match.group(0))
-        else:
-            raise ValueError(f"Failed to parse JSON from AI response: {raw_text}") from e
+    data = _parse_records_json(raw_text)
 
     # Post-process records
     records = []
     for item in data:
+        if not isinstance(item, dict):
+            continue
         art = normalize_article_no(item.get("article_no", ""))
         name = (item.get("name") or "").strip()
         address = (item.get("address") or "").strip()
