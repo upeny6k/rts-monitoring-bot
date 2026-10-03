@@ -15,10 +15,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_GROUP_ID = os.getenv("TELEGRAM_GROUP_ID", "").strip()
 # Supergroup IDs are -100xxxxxxxxxx. Accept both -3974060856 and -1003974060856.
 
-# OpenRouter Settings
+# Vision provider. OPENROUTER_* names stay so existing Railway vars keep working.
+# Command Code Provider API is OpenAI-compatible and serves the same model slug.
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemini-3.7-flash").strip()
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_BASE_URL = os.getenv(
+    "OPENROUTER_BASE_URL",
+    "https://openrouter.ai/api/v1/chat/completions",
+).strip()
 
 # India Post IT 2.0 Portal Settings
 IT20_USERNAME = os.getenv("IT20_USERNAME", "").strip()

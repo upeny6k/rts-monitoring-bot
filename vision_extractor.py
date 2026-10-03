@@ -121,27 +121,56 @@ def _is_quota_error(status_code: int, body: str) -> bool:
     return False
 
 
+def vision_api_root() -> str:
+    """Chat-completions URL -> provider root that also serves /models."""
+    base = (config.OPENROUTER_BASE_URL or "").rstrip("/")
+    suffix = "/chat/completions"
+    if base.endswith(suffix):
+        return base[: -len(suffix)]
+    return base
+
+
+def _uses_openrouter() -> bool:
+    return "openrouter.ai" in (config.OPENROUTER_BASE_URL or "")
+
+
 async def check_openrouter_quota() -> Dict[str, Any]:
-    """Return key spend cap info. remaining=None means unlimited."""
+    """Confirm the vision key is usable before a photo batch.
+
+    OpenRouter exposes a spend cap on GET /key. Command Code and other
+    OpenAI-compatible hosts do not; a successful GET /models is enough.
+    """
     info: Dict[str, Any] = {"ok": True, "limit": None, "remaining": None, "error": ""}
     if not config.OPENROUTER_API_KEY:
         info["ok"] = False
         info["error"] = "OPENROUTER_API_KEY is not set"
         return info
+    auth = {"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"}
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(
-                "https://openrouter.ai/api/v1/key",
-                headers={"Authorization": f"Bearer {config.OPENROUTER_API_KEY}"},
-            )
-            payload = resp.json() if resp.content else {}
-            data = payload.get("data") or payload
-            remaining = data.get("limit_remaining")
-            info["limit"] = data.get("limit")
-            info["remaining"] = remaining
-            if remaining is not None and float(remaining) <= 0:
+            if _uses_openrouter():
+                resp = await client.get("https://openrouter.ai/api/v1/key", headers=auth)
+                payload = resp.json() if resp.content else {}
+                if resp.status_code != 200:
+                    info["ok"] = False
+                    err_msg = payload.get("error", {}).get("message", resp.text)
+                    info["error"] = f"Vision key check failed (HTTP {resp.status_code}): {err_msg}"
+                    return info
+                data = payload.get("data") or payload
+                remaining = data.get("limit_remaining")
+                info["limit"] = data.get("limit")
+                info["remaining"] = remaining
+                if remaining is not None and float(remaining) <= 0:
+                    info["ok"] = False
+                    info["error"] = "Vision API key credit limit exhausted"
+                return info
+
+            resp = await client.get(f"{vision_api_root()}/models", headers=auth)
+            if resp.status_code != 200:
                 info["ok"] = False
-                info["error"] = "OpenRouter API key credit limit exhausted"
+                info["error"] = (
+                    f"Vision key check failed (HTTP {resp.status_code}): {(resp.text or '')[:300]}"
+                )
     except Exception as exc:
         info["ok"] = False
         info["error"] = f"{type(exc).__name__}: {exc}"
@@ -274,25 +303,25 @@ async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
         body = (response.text or "")[:800]
         if _is_quota_error(response.status_code, body):
             raise OpenRouterQuotaError(
-                f"OpenRouter HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
+                f"Vision HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
             )
         if response.status_code in RETRYABLE_HTTP:
-            last_http_err = f"OpenRouter HTTP {response.status_code}: {body}"
+            last_http_err = f"Vision HTTP {response.status_code}: {body}"
             await asyncio.sleep(2 * attempt)
             continue
         if response.status_code >= 400:
             raise RuntimeError(
-                f"OpenRouter HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
+                f"Vision HTTP {response.status_code} for model {config.OPENROUTER_MODEL}: {body}"
             )
         result_json = response.json()
         break
 
     if result_json is None:
-        raise RuntimeError(last_http_err or "OpenRouter request failed after retries")
+        raise RuntimeError(last_http_err or "Vision request failed after retries")
 
     choices = result_json.get("choices") or []
     if not choices:
-        raise RuntimeError(f"OpenRouter returned no choices: {str(result_json)[:500]}")
+        raise RuntimeError(f"Vision API returned no choices: {str(result_json)[:500]}")
 
     message = choices[0].get("message") or {}
     raw_text = message.get("content")
@@ -303,7 +332,7 @@ async def extract_data_from_image(image_path: Path) -> List[Dict[str, Any]]:
         )
     if not raw_text or not str(raw_text).strip():
         raise RuntimeError(
-            f"OpenRouter returned empty content (finish={choices[0].get('finish_reason')}): {str(result_json)[:500]}"
+            f"Vision API returned empty content (finish={choices[0].get('finish_reason')}): {str(result_json)[:500]}"
         )
     raw_text = str(raw_text)
     data = _parse_records_json(raw_text)
